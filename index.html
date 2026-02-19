@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon RPG: Modern Skills</title>
+    <style>
+        :root { 
+            --pkm-green: #00ff88; --pkm-yellow: #ffee00; --pkm-red: #ff4d4d; 
+            --pkm-blue: #00d4ff; --bg-dark: #121212; --panel-bg: #1e1e24;
+        }
+        
+        body { 
+            background-color: var(--bg-dark); color: white; margin: 0;
+            display: flex; justify-content: center; align-items: center; height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container { 
+            width: 800px; height: 500px; background: var(--panel-bg); 
+            border-radius: 20px; display: flex; overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .battle-scene { 
+            flex: 2; position: relative; 
+            background: linear-gradient(180deg, #1a2a6c, #b21f1f, #fdbb2d); /* Epic Sky */
+            overflow: hidden;
+        }
+
+        .ground {
+            position: absolute; bottom: 0; width: 100%; height: 35%;
+            background: #2d3436; transform: skewY(-2deg) translateY(20px);
+        }
+
+        .entity { position: absolute; width: 200px; transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .opponent { top: 40px; right: -250px; } 
+        .player { bottom: 60px; left: -250px; } 
+        .active { right: 50px; } 
+        .active-p { left: 50px; } 
+
+        .sprite { 
+            width: 180px; height: 180px; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.4));
+            image-rendering: auto; 
+        }
+
+        .ui-panel { 
+            flex: 1; background: #25252d; padding: 20px; 
+            display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stats-card {
+            background: rgba(0,0,0,0.3); padding: 12px; border-radius: 12px; margin-bottom: 15px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .hp-bar-container { width: 100%; height: 8px; background: #444; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+        .hp-fill { width: 100%; height: 100%; background: var(--pkm-green); transition: width 0.4s ease-out; }
+
+        .skills-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; }
+        .skill-btn {
+            background: #3a3a4a; border: none; color: white; padding: 12px; border-radius: 8px;
+            font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .skill-btn:hover:not(:disabled) { background: var(--pkm-blue); transform: translateY(-2px); }
+        .skill-btn:active { transform: translateY(0); }
+        .skill-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .attack-bounce-right { animation: bounceRight 0.5s; }
+        .attack-bounce-left { animation: bounceLeft 0.5s; }
+        .shake { animation: shake 0.4s; }
+        .faint { transform: translateY(100px) rotate(20deg); opacity: 0; }
+
+        @keyframes bounceRight { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(50px); } }
+        @keyframes bounceLeft { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-50px); } }
+        @keyframes shake { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(5px, 5px); } 50% { transform: translate(-5px, -5px); } 75% { transform: translate(5px, -5px); } }
+
+        #msg-log { font-size: 14px; color: #aaa; font-style: italic; min-height: 40px; margin-bottom: 20px; }
+
+        #starter-overlay {
+            position: fixed; inset: 0; background: var(--bg-dark); z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .starter-list { display: flex; gap: 30px; }
+        .starter-option { 
+            cursor: pointer; text-align: center; transition: 0.3s; 
+            background: #25252d; padding: 20px; border-radius: 20px;
+        }
+        .starter-option:hover { background: var(--pkm-blue); transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+<div id="starter-overlay">
+    <h1>CHOOSE YOUR LEGEND</h1>
+    <div class="starter-list">
+        <div class="starter-option" onclick="initGame(1)">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png" width="120">
+            <h3>GRASS</h3>
+        </div>
+        <div class="starter-option" onclick="initGame(4)">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png" width="120">
+            <h3>FIRE</h3>
+        </div>
+        <div class="starter-option" onclick="initGame(7)">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/7.png" width="120">
+            <h3>WATER</h3>
+        </div>
+    </div>
+</div>
+
+<div class="game-container">
+    <div class="battle-scene">
+        <div class="ground"></div>
+        
+        <div class="entity opponent" id="opp-box">
+            <img id="e-sprite" src="" class="sprite">
+        </div>
+
+        <div class="entity player" id="pl-box">
+            <img id="p-sprite" src="" class="sprite">
+        </div>
+    </div>
+
+    <div class="ui-panel">
+        <div class="stats-card">
+            <div style="display:flex; justify-content: space-between;">
+                <span id="e-name" style="color:var(--pkm-red); font-weight:bold;">ENEMY</span>
+                <span>Lv. 50</span>
+            </div>
+            <div class="hp-bar-container"><div id="e-hp" class="hp-fill"></div></div>
+        </div>
+
+        <div class="stats-card">
+            <div style="display:flex; justify-content: space-between;">
+                <span id="p-name" style="color:var(--pkm-blue); font-weight:bold;">YOU</span>
+                <span>Lv. 50</span>
+            </div>
+            <div class="hp-bar-container"><div id="p-hp" class="hp-fill"></div></div>
+        </div>
+
+        <div id="msg-log">Ready for battle!</div>
+
+        <div class="skills-grid" id="skills-ui">
+            </div>
+        
+        <button id="next-btn" style="display:none; margin-top:10px; background:var(--pkm-green); color:black;" onclick="spawnNewEnemy()">FIND NEXT CHALLENGER</button>
+    </div>
+</div>
+
+<script>
+    let player = { hp: 100, name: "", moves: [] };
+    let enemy = { hp: 100, name: "" };
+    let isTurn = true;
+
+    async function initGame(starterId) {
+        document.getElementById('starter-overlay').style.opacity = 0;
+        setTimeout(() => document.getElementById('starter-overlay').style.display = 'none', 500);
+        
+        await loadPokemon(starterId, true);
+        spawnNewEnemy();
+    }
+
+    async function loadPokemon(id, isPlayer) {
+        const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+        const data = await res.json();
+        
+        const skills = data.moves.slice(0, 4).map(m => ({
+            name: m.move.name.replace('-', ' '),
+            power: Math.floor(Math.random() * 20) + 15
+        }));
+
+        if(isPlayer) {
+            player = { name: data.name.toUpperCase(), hp: 100, sprite: data.sprites.back_default, moves: skills };
+            document.getElementById('p-name').innerText = player.name;
+            document.getElementById('p-sprite').src = player.sprite;
+            renderSkills();
+            document.getElementById('pl-box').classList.add('active-p');
+        } else {
+            enemy = { name: data.name.toUpperCase(), hp: 100, sprite: data.sprites.front_default };
+            document.getElementById('e-name').innerText = enemy.name;
+            document.getElementById('e-sprite').src = enemy.sprite;
+            document.getElementById('opp-box').classList.add('active');
+        }
+    }
+
+    function renderSkills() {
+        const grid = document.getElementById('skills-ui');
+        grid.innerHTML = player.moves.map(m => `
+            <button class="skill-btn" onclick="useMove('${m.name}', ${m.power})">${m.name}</button>
+        `).join('');
+    }
+
+    function useMove(name, pwr) {
+        if(!isTurn) return;
+        isTurn = false;
+        toggleBtns(true);
+
+        document.getElementById('pl-box').classList.add('attack-bounce-right');
+        document.getElementById('msg-log').innerText = `${player.name} used ${name.toUpperCase()}!`;
+
+        setTimeout(() => {
+            enemy.hp = Math.max(0, enemy.hp - pwr);
+            document.getElementById('e-hp').style.width = enemy.hp + "%";
+            document.getElementById('opp-box').classList.add('shake');
+            document.getElementById('pl-box').classList.remove('attack-bounce-right');
+            
+            if(enemy.hp <= 0) {
+                document.getElementById('opp-box').classList.add('faint');
+                document.getElementById('msg-log').innerText = `${enemy.name} was defeated!`;
+                document.getElementById('next-btn').style.display = 'block';
+            } else {
+                setTimeout(enemyTurn, 1000);
+            }
+            setTimeout(() => document.getElementById('opp-box').classList.remove('shake'), 400);
+        }, 500);
+    }
+
+    function enemyTurn() {
+        document.getElementById('opp-box').classList.add('attack-bounce-left');
+        document.getElementById('msg-log').innerText = `${enemy.name} strikes back!`;
+
+        setTimeout(() => {
+            player.hp = Math.max(0, player.hp - 20);
+            document.getElementById('p-hp').style.width = player.hp + "%";
+            document.getElementById('pl-box').classList.add('shake');
+            document.getElementById('opp-box').classList.remove('attack-bounce-left');
+
+            if(player.hp <= 0) {
+                document.getElementById('pl-box').classList.add('faint');
+                document.getElementById('msg-log').innerText = "You fainted...";
+            } else {
+                isTurn = true;
+                toggleBtns(false);
+            }
+            setTimeout(() => document.getElementById('pl-box').classList.remove('shake'), 400);
+        }, 500);
+    }
+
+    async function spawnNewEnemy() {
+        document.getElementById('next-btn').style.display = 'none';
+        document.getElementById('opp-box').classList.remove('active', 'faint');
+        const randId = Math.floor(Math.random() * 151) + 1;
+        await loadPokemon(randId, false);
+        isTurn = true;
+        toggleBtns(false);
+    }
+
+    function toggleBtns(disabled) {
+        document.querySelectorAll('.skill-btn').forEach(b => b.disabled = disabled);
+    }
+</script>
+</body>
+</html>
