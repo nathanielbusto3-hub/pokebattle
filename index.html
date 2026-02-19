@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Battle Simulator</title>
+    <style>
+        :root { --pkm-green: #4caf50; --pkm-yellow: #ffeb3b; --pkm-red: #f44336; --pkm-blue: #2196F3; }
+        body { background-color: #2c3e50; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: 'Courier New', Courier, monospace; }
+        
+        .game-container { width: 480px; background: #fff; border: 8px solid #333; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        
+        .battle-scene { height: 260px; position: relative; background: linear-gradient(#87CEEB 60%, #90EE90 60%); border-bottom: 4px solid #333; overflow: hidden; }
+        .entity { position: absolute; width: 160px; transition: transform 0.4s, opacity 0.4s; }
+        .opponent { top: 20px; right: 20px; text-align: right; }
+        .player { bottom: 20px; left: 20px; }
+        .sprite { width: 120px; height: 120px; image-rendering: pixelated; }
+
+        .stats { background: rgba(255, 255, 255, 0.9); padding: 8px; border: 3px solid #333; border-radius: 8px; width: 160px; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); }
+        .hp-bar { width: 100%; height: 10px; background: #e0e0e0; border: 2px solid #333; margin-top: 5px; }
+        .hp-fill { width: 100%; height: 100%; background: var(--pkm-green); transition: width 0.5s ease; }
+        .xp-bar { width: 100%; height: 4px; background: #ccc; margin-top: 4px; border: 1px solid #333; }
+        .xp-fill { width: 0%; height: 100%; background: var(--pkm-blue); transition: width 0.8s ease; }
+
+        .ui { display: grid; grid-template-columns: 1fr 1fr; padding: 20px; background: #fdfdfd; min-height: 140px; }
+        #msg { font-size: 15px; font-weight: bold; line-height: 1.4; padding-right: 15px; color: #333; }
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        
+        button { padding: 10px; cursor: pointer; background: #fff; border: 3px solid #333; font-family: inherit; font-weight: bold; font-size: 12px; border-radius: 5px; transition: 0.1s; }
+        button:hover:not(:disabled) { background: #333; color: #fff; }
+        button:active { transform: translateY(2px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #pokeball { position: absolute; top: 70px; right: 80px; width: 40px; display: none; z-index: 10; }
+        .ball-shake { animation: ball-shake 0.5s infinite; }
+        @keyframes ball-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } }
+        .shake { animation: shake 0.25s ease-in-out; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div class="battle-scene">
+        <img id="pokeball" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" alt="Pokeball">
+        
+        <div class="entity opponent" id="opp-box">
+            <div class="stats">
+                <strong>SQUIRTLE</strong> <small>Lv.5</small>
+                <div class="hp-bar"><div id="e-hp" class="hp-fill"></div></div>
+            </div>
+            <img id="enemy-sprite" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png" class="sprite">
+        </div>
+
+        <div class="entity player" id="pl-box">
+            <img id="pl-sprite" src="" class="sprite">
+            <div class="stats">
+                <strong id="pl-name"></strong> <small>Lv.<span id="pl-lv">1</span></small>
+                <div class="hp-bar"><div id="p-hp" class="hp-fill"></div></div>
+                <div class="xp-bar"><div id="xp-fill" class="xp-fill"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui">
+        <div id="msg">A wild SQUIRTLE appeared!</div>
+        <div class="actions">
+            <button class="btn" onclick="handleMove('Thunderbolt', 30, 'electric')">ATTACK</button>
+            <button class="btn" onclick="usePotion()">POTION (3)</button>
+            <button class="btn" onclick="swap()">SWAP</button>
+            <button class="btn" onclick="throwBall()">CATCH</button>
+            <button class="btn" onclick="run()">RUN</button>
+        </div>
+    </div>
+</div>
+
+<script>
+   
+    const party = [
+        { name: "PIKACHU", lv: 1, hp: 100, maxHp: 100, xp: 0, type: 'electric', sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/25.png" },
+        { name: "CHARMANDER", lv: 1, hp: 100, maxHp: 100, xp: 0, type: 'fire', sprite: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/4.png" }
+    ];
+    let activeIdx = 0;
+    let enemy = { name: "SQUIRTLE", hp: 100, type: 'water' };
+    let potions = 3;
+
+    const typeChart = {
+        electric: { water: 2.0, electric: 0.5, ground: 0 },
+        fire: { water: 0.5, grass: 2.0, fire: 0.5 }
+    };
+
+    function init() {
+        const p = party[activeIdx];
+        document.getElementById('pl-name').innerText = p.name;
+        document.getElementById('pl-sprite').src = p.sprite;
+        document.getElementById('pl-lv').innerText = p.lv;
+        updateUI();
+    }
+
+    function updateUI() {
+        const p = party[activeIdx];
+        const pFill = document.getElementById('p-hp');
+        const eFill = document.getElementById('e-hp');
+        
+        pFill.style.width = (p.hp / p.maxHp * 100) + "%";
+        eFill.style.width = enemy.hp + "%";
+        document.getElementById('xp-fill').style.width = (p.xp / 50 * 100) + "%";
+
+        pFill.style.backgroundColor = p.hp < 25 ? "var(--pkm-red)" : (p.hp < 50 ? "var(--pkm-yellow)" : "var(--pkm-green)");
+    }
+
+    function handleMove(moveName, dmg, moveType) {
+        toggleButtons(true);
+        const mult = typeChart[moveType]?.[enemy.type] || 1.0;
+        const finalDmg = Math.floor(dmg * mult);
+        
+        enemy.hp = Math.max(0, enemy.hp - finalDmg);
+        document.getElementById('msg').innerText = `${party[activeIdx].name} used ${moveName}!`;
+        if(mult > 1) setTimeout(() => document.getElementById('msg').innerText += " It's super effective!", 500);
+
+        animate('opp-box', 'shake');
+        updateUI();
+
+        if (enemy.hp <= 0) setTimeout(winBattle, 1200);
+        else setTimeout(enemyTurn, 1500);
+    }
+
+    function enemyTurn() {
+        const p = party[activeIdx];
+        p.hp = Math.max(0, p.hp - 15);
+        document.getElementById('msg').innerText = `${enemy.name} used Water Gun!`;
+        animate('pl-box', 'shake');
+        updateUI();
+
+        if (p.hp <= 0) {
+            document.getElementById('msg').innerText = `${p.name} fainted!`;
+        } else {
+            setTimeout(() => { toggleButtons(false); document.getElementById('msg').innerText = "What will you do?"; }, 800);
+        }
+    }
+
+    function swap() {
+        toggleButtons(true);
+        document.getElementById('pl-box').style.opacity = "0";
+        setTimeout(() => {
+            activeIdx = activeIdx === 0 ? 1 : 0;
+            init();
+            document.getElementById('pl-box').style.opacity = "1";
+            document.getElementById('msg').innerText = `Go, ${party[activeIdx].name}!`;
+            setTimeout(enemyTurn, 1000);
+        }, 500);
+    }
+
+    function throwBall() {
+        toggleButtons(true);
+        const ball = document.getElementById('pokeball');
+        const eImg = document.getElementById('enemy-sprite');
+        
+        document.getElementById('msg').innerText = "You threw a Pokéball!";
+        eImg.style.opacity = "0";
+        ball.style.display = "block";
+        ball.classList.add('ball-shake');
+
+        setTimeout(() => {
+            if (Math.random() * 100 > enemy.hp) {
+                ball.classList.remove('ball-shake');
+                document.getElementById('msg').innerText = `Gotcha! ${enemy.name} was caught!`;
+            } else {
+                ball.style.display = "none";
+                eImg.style.opacity = "1";
+                document.getElementById('msg').innerText = "The Pokémon broke free!";
+                setTimeout(enemyTurn, 1000);
+            }
+        }, 2000);
+    }
+
+    function usePotion() {
+        if (potions <= 0) return;
+        toggleButtons(true);
+        potions--;
+        party[activeIdx].hp = Math.min(party[activeIdx].maxHp, party[activeIdx].hp + 40);
+        document.getElementById('msg').innerText = "Used a Potion!";
+        updateUI();
+        setTimeout(enemyTurn, 1000);
+    }
+
+    function run() {
+        document.getElementById('msg').innerText = "Got away safely!";
+        toggleButtons(true);
+    }
+
+    function winBattle() {
+        const p = party[activeIdx];
+        p.xp += 30;
+        document.getElementById('msg').innerText = `${enemy.name} fainted! Gained 30 XP.`;
+        updateUI();
+        if (p.xp >= 50) {
+            setTimeout(() => {
+                p.lv++; p.xp = 0; p.maxHp += 10; p.hp = p.maxHp;
+                document.getElementById('msg').innerText = `${p.name} leveled up to Lv.${p.lv}!`;
+                init();
+            }, 1000);
+        }
+    }
+
+    function toggleButtons(status) {
+        document.querySelectorAll('.btn').forEach(b => b.disabled = status);
+    }
+
+    function animate(id, cls) {
+        const el = document.getElementById(id);
+        el.classList.add(cls);
+        setTimeout(() => el.classList.remove(cls), 300);
+    }
+
+    init();
+</script>
+</body>
+</html>
